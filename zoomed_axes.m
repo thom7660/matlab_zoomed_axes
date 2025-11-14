@@ -101,7 +101,9 @@ classdef zoomed_axes < handle
             
             % Create listeners to match box location to zoom axes panning
             obj.Listeners(end+1) = addlistener(obj.Axes, 'XLim', 'PostSet', @(~,~) obj.update_box_from_axes());
+            obj.Listeners(end+1) = addlistener(obj.Axes, 'YLim', 'PostSet', @(~,~) obj.update_box_from_axes());
             obj.Listeners(end+1) = addlistener(obj.ParentAxes, 'XLim', 'PostSet', @(~,~) obj.update_box_from_axes());
+            obj.Listeners(end+1) = addlistener(obj.ParentAxes, 'YLim', 'PostSet', @(~,~) obj.update_box_from_axes());
             
             % add object to figure list of zoomed axes
             list = getappdata(obj.ParentFigure, 'ZoomedAxesList');
@@ -184,13 +186,13 @@ classdef zoomed_axes < handle
             cp = obj.ParentAxes.CurrentPoint;
             
             % distance to nearest box corner
-            dx = (cp(1,1) - obj.Box.XData)./(obj.Box.XData(3) - obj.Box.XData(1));
-            dy = (cp(1,2) - obj.Box.YData)./(obj.Box.YData(3) - obj.Box.YData(1));
+            dx = (cp(1,1) - obj.Box.Vertices(:,1))./(obj.Box.Vertices(3,1) - obj.Box.Vertices(1,1));
+            dy = (cp(1,2) - obj.Box.Vertices(:,2))./(obj.Box.Vertices(3,2) - obj.Box.Vertices(1,2));
             corner_dist = sqrt(dx.^2 + dy.^2);
             
             on_corner = (corner_dist <= buffer);
-            in_box = cp(1,1)>=obj.Box.XData(1) && cp(1,1)<=obj.Box.XData(3) && ...
-                     cp(1,2)>=obj.Box.YData(1) && cp(1,2)<=obj.Box.YData(3);
+            in_box = cp(1,1)>=obj.Box.Vertices(1,1) && cp(1,1)<=obj.Box.Vertices(3,1) && ...
+                     cp(1,2)>=obj.Box.Vertices(1,2) && cp(1,2)<=obj.Box.Vertices(3,2);
                  
             obj.ZoomBoxCollision = 0;
             
@@ -238,27 +240,58 @@ classdef zoomed_axes < handle
             
             dx = cp(1,1) - obj.StartingPos(1);
             dy = cp(1,2) - obj.StartingPos(2);
-           
+                      
             if obj.ZoomBoxCollision == 2 % moving
                 
                 obj.Box.Vertices = obj.StartingBoxVertices + [dx,dy];
 
             elseif obj.ZoomBoxCollision == 1 % resizing
-                obj.Box.Vertices(obj.DragIndices,:) = obj.StartingBoxVertices(obj.DragIndices,:) + [dx,dy];
+                
+                % Get candidate position and check add buffer region to
+                % prevent box from inverting
+                x_orig = obj.StartingBoxVertices(3,1) - obj.StartingBoxVertices(1,1);
+                y_orig = obj.StartingBoxVertices(3,2) - obj.StartingBoxVertices(1,2);
+                
+                % set minimum acceptable zoom region length ratios
+                xl_limit = 0.05;
+                yl_limit = 0.05;
+                
                 if obj.DragIndices(1) == 1 || obj.DragIndices(1) == 5
+                    dx_limit = (1.0-xl_limit)*x_orig;
+                    dy_limit = (1.0-yl_limit)*y_orig;
+                    dx = min(dx,dx_limit);
+                    dy = min(dy,dy_limit);
+                    obj.Box.Vertices(obj.DragIndices,:) = obj.StartingBoxVertices(obj.DragIndices,:) + [dx,dy];
                     obj.Box.Vertices(2,2) = obj.StartingBoxVertices(2,2) + dy;
                     obj.Box.Vertices(4,1) = obj.StartingBoxVertices(4,1) + dx;
                 elseif obj.DragIndices(1) == 2
+                    dx_limit = -(1.0-xl_limit)*x_orig;
+                    dy_limit = (1.0-yl_limit)*y_orig;
+                    dx = max(dx,dx_limit);
+                    dy = min(dy,dy_limit);
+                    obj.Box.Vertices(obj.DragIndices,:) = obj.StartingBoxVertices(obj.DragIndices,:) + [dx,dy];
                     obj.Box.Vertices([1,5],2) = obj.StartingBoxVertices([1,5],2) + dy;
                     obj.Box.Vertices(3,1) = obj.StartingBoxVertices(3,1) + dx;
                 elseif obj.DragIndices(1) == 3
+                    dx_limit = -(1.0-xl_limit)*x_orig;
+                    dy_limit = -(1.0-yl_limit)*y_orig;
+                    dx = max(dx,dx_limit);
+                    dy = max(dy,dy_limit);
+                    obj.Box.Vertices(obj.DragIndices,:) = obj.StartingBoxVertices(obj.DragIndices,:) + [dx,dy];
                     obj.Box.Vertices(4,2) = obj.StartingBoxVertices(4,2) + dy;
                     obj.Box.Vertices(2,1) = obj.StartingBoxVertices(3,1) + dx;
                 elseif obj.DragIndices(1) == 4
+                    dx_limit = (1.0-xl_limit)*x_orig;
+                    dy_limit = -(1.0-yl_limit)*y_orig;
+                    dx = min(dx,dx_limit);
+                    dy = max(dy,dy_limit);
+                    obj.Box.Vertices(obj.DragIndices,:) = obj.StartingBoxVertices(obj.DragIndices,:) + [dx,dy];
                     obj.Box.Vertices([1,5],1) = obj.StartingBoxVertices([1,5],1) + dx;
                     obj.Box.Vertices(3,2) = obj.StartingBoxVertices(3,2) + dy;
                 end
+                
             end
+            
             
             % Have to pause zoom box update since updating the zoomed axes
             % limits will trigger the listener, which will re-adjust the
@@ -292,27 +325,41 @@ classdef zoomed_axes < handle
             figPos = obj.ParentFigure.Position;
             dxNorm = dx/figPos(3);
             dyNorm = dy/figPos(4);
+
+            dlims = 0.05;
             
             if obj.ZoomAxesCollision == 2 % moving
                 obj.Axes.Position(1) = obj.StartingAxesPos(1) + dxNorm;
                 obj.Axes.Position(2) = obj.StartingAxesPos(2) + dyNorm;
             elseif obj.ZoomAxesCollision == 1 % resizing
+
+                dx_limit = obj.StartingAxesPos(3)*(1-dlims);
+                dy_limit = obj.StartingAxesPos(4)*(1-dlims);
+
                 if obj.DragIndices(1) == 1
-                    obj.Axes.Position(1) = obj.StartingAxesPos(1) + dxNorm;
-                    obj.Axes.Position(2) = obj.StartingAxesPos(2) + dyNorm;
-                    obj.Axes.Position(3) = max(0.05, obj.StartingAxesPos(3)-dxNorm);
-                    obj.Axes.Position(4) = max(0.05, obj.StartingAxesPos(4)-dyNorm);
+                    dx = min(dxNorm, dx_limit);
+                    dy = min(dyNorm, dy_limit);
+                    obj.Axes.Position(1) = obj.StartingAxesPos(1) + dx;
+                    obj.Axes.Position(2) = obj.StartingAxesPos(2) + dy;
+                    obj.Axes.Position(3) = obj.StartingAxesPos(3)-dx;
+                    obj.Axes.Position(4) = obj.StartingAxesPos(4)-dy;
                 elseif obj.DragIndices == 2
-                    obj.Axes.Position(2) = obj.StartingAxesPos(2) + dyNorm;
-                    obj.Axes.Position(3) = max(0.05, obj.StartingAxesPos(3)+dxNorm);
-                    obj.Axes.Position(4) = max(0.05, obj.StartingAxesPos(4)-dyNorm);
+                    dx = max(dxNorm, -dx_limit);
+                    dy = min(dyNorm, dy_limit);
+                    obj.Axes.Position(2) = obj.StartingAxesPos(2) + dy;
+                    obj.Axes.Position(3) = obj.StartingAxesPos(3) + dx;
+                    obj.Axes.Position(4) = obj.StartingAxesPos(4) - dy;
                 elseif obj.DragIndices == 3
-                    obj.Axes.Position(3) = max(0.05, obj.StartingAxesPos(3)+dxNorm);
-                    obj.Axes.Position(4) = max(0.05, obj.StartingAxesPos(4)+dyNorm);
+                    dx = max(dxNorm, -dx_limit);
+                    dy = max(dyNorm, -dy_limit);
+                    obj.Axes.Position(3) = obj.StartingAxesPos(3)+dx;
+                    obj.Axes.Position(4) = obj.StartingAxesPos(4)+dy;
                 elseif obj.DragIndices == 4
-                    obj.Axes.Position(1) = obj.StartingAxesPos(1) + dxNorm;
-                    obj.Axes.Position(3) = max(0.05, obj.StartingAxesPos(3)-dxNorm);
-                    obj.Axes.Position(4) = max(0.05, obj.StartingAxesPos(4)+dyNorm);
+                    dx = min(dxNorm, dx_limit);
+                    dy = max(dyNorm, -dy_limit);
+                    obj.Axes.Position(1) = obj.StartingAxesPos(1) + dx;
+                    obj.Axes.Position(3) = obj.StartingAxesPos(3) - dx;
+                    obj.Axes.Position(4) = obj.StartingAxesPos(4) + dy;
                 end
    
             end
@@ -448,6 +495,16 @@ classdef zoomed_axes < handle
         end
 
         function update_box_from_axes(obj)
+            
+            if ~obj.PauseBoxUpdate
+                obj.Box.Vertices(:,1) = obj.Axes.XLim([1,2,2,1,1]);
+                obj.Box.Vertices(:,2) = obj.Axes.YLim([1,1,2,2,1]);
+                obj.update_box_connectors();
+            end
+            
+        end
+
+        function update_box_from_axes_2(obj)
             
             if ~obj.PauseBoxUpdate
                 obj.Box.Vertices(:,1) = obj.Axes.XLim([1,2,2,1,1]);
