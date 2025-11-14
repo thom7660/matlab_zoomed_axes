@@ -1,7 +1,7 @@
 # Matlab Zoomed Axes
 
 Adds a new class for creating nested axes that show zoomed-in regions of a 2D plot.
-Supports multiple zoomed axes per parent and is fully interactive for easy placement. Allows multiple zoomed axes per plot
+Supports multiple zoomed axes per parent and is fully interactive for easy placement.
 
 <div align="center">
 <img src="doc/example_signal.jpeg" alt="example" width="600"/>
