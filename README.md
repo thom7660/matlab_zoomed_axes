@@ -68,3 +68,7 @@ xlim(zoom_ax.Axes, [x_min, x_max]); % using xlim() on the handle of the nested a
 zoom_ax.XLim = [x_min, xmax]; % directly accessing the xlim property by operating on the zoomed_axes object
 zoom_ax.Axes.XLim = [x_min, x_max]; % directly accessing the xlim property of the nested axes
 ```
+
+## License
+Distributed under the Modified BSD license (see the [license file](./license.txt))
+
