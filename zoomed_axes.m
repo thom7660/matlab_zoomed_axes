@@ -105,6 +105,14 @@ classdef zoomed_axes < handle
             obj.Listeners(end+1) = addlistener(obj.ParentAxes, 'XLim', 'PostSet', @(~,~) obj.update_box_from_axes());
             obj.Listeners(end+1) = addlistener(obj.ParentAxes, 'YLim', 'PostSet', @(~,~) obj.update_box_from_axes());
             
+            % For newer versions of matlab, we also need to set the "LimitsChangedFunction"
+            % only available in 2021a and later. pre-2025a this will work like a listener and update as panning is completed
+            % 2025a and later it is only called after panning is complete, so we still need to keep the above listeners
+            obj.Axes.XAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
+            obj.Axes.YAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
+            obj.ParentAxes.XAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
+            obj.ParentAxes.YAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
+            
             % add object to figure list of zoomed axes
             list = getappdata(obj.ParentFigure, 'ZoomedAxesList');
             if isempty(list)
