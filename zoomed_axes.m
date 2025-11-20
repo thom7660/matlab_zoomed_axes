@@ -99,19 +99,36 @@ classdef zoomed_axes < handle
             obj.Axes.XLim = zoomRegion([1,3]);
             obj.Axes.YLim = zoomRegion([2,4]);
             
+            % Get matlab version, because behavior of listeners has changed
+            % starting with 2021a (added the 'LimitsChangedFcn' callback)
+            % and again with 2025a (this callback is no longer iterative)
+            % 2021a = version 9.10
+            % 2025a = version 25.1 (version numbers started making sense in 2023)
+            ver = version;
+            major_minor = strfind(ver, '.');
+            major_minor = str2double(ver(1:major_minor(2)-1));
+
             % Create listeners to match box location to zoom axes panning
-            obj.Listeners(end+1) = addlistener(obj.Axes, 'XLim', 'PostSet', @(~,~) obj.update_box_from_axes());
-            obj.Listeners(end+1) = addlistener(obj.Axes, 'YLim', 'PostSet', @(~,~) obj.update_box_from_axes());
-            obj.Listeners(end+1) = addlistener(obj.ParentAxes, 'XLim', 'PostSet', @(~,~) obj.update_box_from_axes());
-            obj.Listeners(end+1) = addlistener(obj.ParentAxes, 'YLim', 'PostSet', @(~,~) obj.update_box_from_axes());
+            % IF before 2021a (no LimitsChangedFcn callback available)
+            % After 2025a (LimitsChangedFcn only called at end - no live updating)
+            if major_minor < 9.10 || major_minor >= 25.1
+            	obj.Listeners(end+1) = addlistener(obj.Axes, 'XLim', 'PostSet', @(~,~) obj.update_box_from_axes());
+                obj.Listeners(end+1) = addlistener(obj.Axes, 'YLim', 'PostSet', @(~,~) obj.update_box_from_axes());
+                obj.Listeners(end+1) = addlistener(obj.ParentAxes, 'XLim', 'PostSet', @(~,~) obj.update_box_from_axes());
+                obj.Listeners(end+1) = addlistener(obj.ParentAxes, 'YLim', 'PostSet', @(~,~) obj.update_box_from_axes());
+            end
             
-            % For newer versions of matlab, we also need to set the "LimitsChangedFunction"
-            % only available in 2021a and later. pre-2025a this will work like a listener and update as panning is completed
-            % 2025a and later it is only called after panning is complete, so we still need to keep the above listeners
-            obj.Axes.XAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
-            obj.Axes.YAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
-            obj.ParentAxes.XAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
-            obj.ParentAxes.YAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
+            % Now register the LimitsChangedFcn callback if it exists (R2021a+)
+            % (Redundant for 2021a, but becomes needed for 'restore view'
+            % functionality somewhere between 2021b and 2025a)
+            % have to play same "global function" trick as with other callbacks so it 
+            % is applied to every zoomed axes when the parent axes is moved
+            if (major_minor) >= 9.10 % if MATLAB r2021a or newer
+                obj.Axes.XAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
+                obj.Axes.YAxis.LimitsChangedFcn = @(~,~) obj.update_box_from_axes();
+                obj.ParentAxes.XAxis.LimitsChangedFcn = @(src,evdat) zoomed_axes.globalLimitsChangedFcn(src,evdat);
+                obj.ParentAxes.YAxis.LimitsChangedFcn = @(src,evdat) zoomed_axes.globalLimitsChangedFcn(src,evdat);
+            end
             
             % add object to figure list of zoomed axes
             list = getappdata(obj.ParentFigure, 'ZoomedAxesList');
@@ -504,6 +521,7 @@ classdef zoomed_axes < handle
 
         function update_box_from_axes(obj)
             
+            fprintf('update_box_from_axes\n');
             if ~obj.PauseBoxUpdate
                 obj.Box.Vertices(:,1) = obj.Axes.XLim([1,2,2,1,1]);
                 obj.Box.Vertices(:,2) = obj.Axes.YLim([1,1,2,2,1]);
@@ -646,6 +664,17 @@ classdef zoomed_axes < handle
             end
         end
 
+        function globalLimitsChangedFcn(axis_handle, ~)          
+            fig = ancestor(axis_handle,'figure');        
+            list = getappdata(fig, 'ZoomedAxesList');
+            for k = 1:numel(list)
+                if isvalid(list(k))
+                    list(k).update_box_from_axes();
+                    list(k).update_axes_from_box();
+                end
+            end
+        end
+        
     end
    
     % methods used to forward axes behaviors
