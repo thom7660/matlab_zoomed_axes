@@ -521,7 +521,6 @@ classdef zoomed_axes < handle
 
         function update_box_from_axes(obj)
             
-            fprintf('update_box_from_axes\n');
             if ~obj.PauseBoxUpdate
                 obj.Box.Vertices(:,1) = obj.Axes.XLim([1,2,2,1,1]);
                 obj.Box.Vertices(:,2) = obj.Axes.YLim([1,1,2,2,1]);
